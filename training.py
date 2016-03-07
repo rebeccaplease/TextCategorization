@@ -21,7 +21,11 @@ class Document:
             return True
 
     def __str__(self):
-     return str(self.tf) + self.cat
+        return str(self.tf) + self.cat
+    def __repr__(self):
+        return str(self.tf) + self.cat
+
+     #str(self.tf) + self.cat
 
 #prompt for user input
 print("\n---Text Categorization Training Program---\n")
@@ -120,9 +124,10 @@ while(len(files) > 0):
 f = open('output.txt','w+')
 f.write(str(catDoc))
 f.close()
+#print(catDoc[0])
 
 end = datetime.now()
-print("Runtime: ",end-start)
+print("\nRuntime: ",end-start)
 #print(catDoc)
 # iterate through catDoc and calculate tf*idf
 # take average for each term to get the centroid for each cat
