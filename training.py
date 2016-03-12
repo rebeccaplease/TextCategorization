@@ -2,16 +2,20 @@ from __future__ import print_function, division
 
 import nltk as nltk
 from nltk.tokenize import word_tokenize
-from numpy import empty
 import os
 
 from datetime import datetime
+
+from numpy import empty
+
+from math import log10
 
 class Document:
     def __init__(self, filepath, category):
         self.tf = dict()
         self.file = filepath
         self.cat = category
+        self.wordCount = 0
     def addTF(self, word):
         if word in self.tf:
             self.tf[word] += 1
@@ -62,7 +66,7 @@ for line in f:
 #print(files)
 #print(categories)
 
-f.close() #close file after done
+f.close() #close file after done reading filepaths and categories
 
 ## train on training set for each document in files
 
@@ -76,7 +80,8 @@ catDoc = list() #empty list
 for c in range(len(categories)): #fill array with lists to hold docs
     catDoc.append(list()) #list of lists
 
-allWords = dict()
+
+allWords = dict() # hold all words for idf calculation - inverted index
 
 while(len(files) > 0):
     doc = files.pop()
@@ -108,9 +113,10 @@ while(len(files) > 0):
     #print("relative path: ",relativePath)
     #print("file name: ", filename)
     f = open(filename)
-
+    numWordsInDoc = 0
     for line in f:
         words = word_tokenize(line) # tokenized words in array
+
         for w in words:
             #check for punctuations, contractions
             if doc.addTF(w): # first time word has occured in doc, add idf score
@@ -118,13 +124,41 @@ while(len(files) > 0):
                     allWords[w] += 1
                 else:
                     allWords[w] = 1
+                numWordsInDoc += 1 # increment number of words for this document
+    # ( normalize tf by total number of terms?)
     f.close()
+    doc.wordCount = numWordsInDoc
     catDoc[categories.index(doc.cat)].append(doc) #add document to correct category with its term weights
 
+# calculate idf score - loop through allWords and d
+idf = dict()
+for word, count in allWords.items():
+    idf[word] = log10(N/count)
+
+weights = list() #empty list - hold centroid of each category
+for c in range(len(categories)): #fill array with lists to hold docs
+    weights.append(dict()) # dictionary maps word: weight
+
+# calculate tf*idf for each category, keep running avg for each
+for k in range(len(categories)): # loop through catDoc
+    docs = catDoc[k] # list of documents in a category
+    docCount = len(docs)
+    for d in docs: # iterate through docs in this category and calculate tf*idf score for each word in document
+        for word, tfcount in d.tf.items(): # iterate through words in document
+            idfWord = idf.get(word) # get idf for this word
+            if word in weights[k]:
+                weights[k][word] += ((tfcount/d.wordCount)*idfWord)/docCount # calculate weight, word:weight. normalize tf by wordcount
+                # and normalize overall weight by the document count
+            else:
+                weights[k][word] = ((tfcount/d.wordCount)*idfWord)/docCount # calculate weight, word:weight. normalize tf by wordcount
+                # and normalize overall weight by the document count
+
+
 f = open('output.txt','w+')
-f.write(str(catDoc))
+for k in range(len(categories)):
+    f.write("-"+categories[k]+"-"+ "\n\n"+str(weights[k])+"\n\n")
+    #write out number of words in each category - read into testing.py  
 f.close()
-#print(catDoc[0])
 
 end = datetime.now()
 print("\nRuntime: ",end-start)
