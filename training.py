@@ -8,7 +8,7 @@ from datetime import datetime
 
 from numpy import empty
 
-from math import log10
+from math import log10, sqrt
 
 class Document:
     def __init__(self, filepath, category):
@@ -144,24 +144,42 @@ for k in range(len(categories)): # loop through catDoc
     docs = catDoc[k] # list of documents in a category
     docCount = len(docs)
     for d in docs: # iterate through docs in this category and calculate tf*idf score for each word in document
+        #keep running square of tf*idf
+        docNorm = 0
+        docVector = dict()
         for word, tfcount in d.tf.items(): # iterate through words in document
             idfWord = idf.get(word) # get idf for this word
-            if word in weights[k]:
-                weights[k][word] += ((tfcount/d.wordCount)*idfWord)/docCount # calculate weight, word:weight. normalize tf by wordcount
+            calcWeight = ((tfcount/d.wordCount)*idfWord)/docCount
+            if word in docVector:
+                docVector[word] +=  calcWeight # calculate weight, word:weight. normalize tf by wordcount
                 # and normalize overall weight by the document count
             else:
-                weights[k][word] = ((tfcount/d.wordCount)*idfWord)/docCount # calculate weight, word:weight. normalize tf by wordcount
+                docVector[word] = calcWeight # calculate weight, word:weight. normalize tf by wordcount
                 # and normalize overall weight by the document count
-
+            docNorm += pow(calcWeight,2) #square tf*idf score for this word
+        docNorm = sqrt(docNorm) #take square root
+        # normalize each term of the document vector by calculated norm and the number of docs in this cat
+        for word, weight in docVector.items():
+            normalizedDocWeight = weight/docNorm/docCount
+            docVector[word] = normalizedDocWeight
+            # add to weights vector
+            if word in weights[k]:
+                weights[k][word] += normalizedDocWeight
+            else:
+                weights[k][word] = normalizedDocWeight
 
 f = open('output.txt','w+')
+#print out number of categories
 for k in range(len(categories)):
+    # write out list of all words and idf score
     f.write("-"+categories[k]+"-"+ "\n\n"+str(weights[k])+"\n\n")
-    #write out number of words in each category - read into testing.py  
+    #write out number of words in each category - read into testing.py
 f.close()
 
 end = datetime.now()
 print("\nRuntime: ",end-start)
+
+
 #print(catDoc)
 # iterate through catDoc and calculate tf*idf
 # take average for each term to get the centroid for each cat
