@@ -6,7 +6,7 @@ import os
 
 from datetime import datetime
 
-from numpy import empty
+from numpy import zeros
 
 from math import log10, sqrt
 
@@ -15,6 +15,7 @@ class Document:
         self.tf = dict()
         self.file = filepath
         self.cat = category
+        self.predicted = "" #predicted category by testing
         self.wordCount = 0
     def addTF(self, word):
         if word in self.tf:
@@ -69,9 +70,8 @@ for line in f:
 f.close() #close file after done reading filepaths and categories
 
 ## train on training set for each document in files
-
-# loop through and find tf for each doc
-# find idf for each term - set true for each encountered term in a doc
+# iterate through catDoc and calculate tf*idf
+# take average for each term to get the centroid for each cat
 
 categories = list(categories) #convert set to list
 
@@ -119,7 +119,7 @@ while(len(files) > 0):
 
         for w in words:
             #check for punctuations, contractions
-            if doc.addTF(w): # first time word has occured in doc, add idf score
+            if doc.addTF(w): # first time word has occured in doc, add doc count score
                 if w in allWords: #if the word already is there
                     allWords[w] += 1
                 else:
@@ -180,14 +180,167 @@ end = datetime.now()
 print("\nRuntime: ",end-start)
 
 
-#print(catDoc)
-# iterate through catDoc and calculate tf*idf
-# take average for each term to get the centroid for each cat
+## testing here (figure out file format after ##
 
-#for docList in catDoc:
+print("\n---Text Categorization Testing Program---\n")
+
+start = datetime.now()
+
+## Read test doc filenames
+
+valid = False
+while not valid:
+    try:
+        #testFile = raw_input("Enter test document file name: ")
+        testFile = './TC_provided/corpus1_test.labels'
+        f = open(testFile, 'r') # read in trained file
+        valid = True
+        # format: relativePath/filename category
+    except IOError:
+        print("Please enter a valid filename")
+
+#outputFile = raw_input("Enter output filename: ")
+testFilesList = list() # create an empty list for holding test files
+for line in f:
+    temp = line.split() # filename, category
+    testFilesList.append(Document(temp[0], temp[1])) # filename to parse
+
+f.close() #close file after done
+
+## test
 
 
+# compare to trained category weights
+
+#iterate through words in test document,
+#compute similarity -
+#if centroid category is already normalized, no need to normalize the test document
+#because the length will be the same anyways
+
+for k in range(len(testFilesList)):
+    #find tf for each word in each test document
+    doc = testFilesList[k]
+    relativePath = os.path.relpath(doc.file) #get relative path of the document
+    filename = os.path.join("TC_provided", relativePath)
+
+    f = open(filename, 'r')
+    numWordsInDoc = 0
+    for line in f:
+        words = word_tokenize(line) # tokenized words in array
+        for w in words:
+            #check for punctuations, contractions
+            doc.addTF(w) # first time word has occured in doc
+            numWordsInDoc += 1 # increment number of words for this document
+    f.close()
+    doc.wordCount = numWordsInDoc
+
+#calculate similarity - multiply tf of each test doc by the centroid of each cat
+
+for doc in testFilesList:
+    maxSim = 0
+    catIndex = -1
+    for k in range(len(weights)): # iterate through each category
+        sim = 0
+        #iterate through each word in test doc
+        for word, count in doc.tf.items():
+            sim += weights[k].get(word,0)*allWords.get(word, 0)*count
+        if sim > maxSim: #store max similarity of all categories and index
+            maxSim = sim
+            catIndex = k
+    #print(catIndex)
+    doc.predicted = categories[catIndex] #assign category to current document
 
 
-## print out trained results: categories and feature vectors, weights, etc
-# print out catDoc
+## print out results: filename category
+
+total = 0 #keep track of total number of documents (or from testing)
+confusion = zeros((len(categories), len(categories))) # x corresponds to correct cat, y corresponds to predicted
+
+# compare to test file
+for k in range(len(testFilesList)):
+    catCorrect = testFilesList[k].cat
+    catPredicted = testFilesList[k].predicted # get predicted cat from test
+    x = categories.index(catCorrect) # get index categories to put into matrix
+    y = categories.index(catPredicted)
+    confusion[x][y] += 1 # increment count by 1
+    total += 1
+
+A = 0 # predict cat, expect cat (true positive)
+B = 0 # predict cat, expect no (false positive)
+C = 0 # predict no, expect cat (false negative)
+D = 0 # predict no, expect no (true negative)
+
+# microaverage: for each cat, take average
+# macroaverage: overall
+# https://en.wikipedia.org/wiki/Confusion_matrix
+
+metrics = zeros((len(categories), 4)) # hold metrics (ABCD) for each category
+# 0 = A, 1 = B, 2 = C, 3 = D
+A = 0
+B = 0
+C = 0
+D = 0
+# loop through confusion matrix
+for i in range(len(categories)): # for each predicted category
+    for j in range(len(categories)): #for each actual category
+        num = confusion[i][j]
+        if i == j: # prediction matches actual cat
+            metrics[i][0] += num
+            A += num
+        else:
+            metrics[i][1] += num #if prediction falsely says cat, false positive
+            metrics[j][2] += num #if prediction falsely says not cat, false negative
+            B += num
+            C += num
+
+microOverallAcc = 0
+microPrecision = 0
+microRecall = 0
+microF1 = 0
+
+for k in range(len(categories)): # for each predicted category
+    # true negative: difference between a,b,c,d metrics for this cat and the total number of docs
+    metrics[k][3] = total - (metrics[k][0] + metrics[k][1] + metrics[k][2])
+    #microaverage: for each cat, then take average
+    a = metrics[k][0]
+    b = metrics[k][1]
+    c = metrics[k][2]
+    d = metrics[k][3]
+    microOverallAcc += (a+d)/(a+b+c+d)/len(categories)
+    microPrecision += a/(a+b)/len(categories)
+    microRecall += a/(a+c)/len(categories)
+    microF1 += (2*microPrecision*microRecall)/(microPrecision+microRecall)/len(categories)
+
+
+#macroaverage
+overallAccuracy = (A+D)/(A+B+C+D)
+precision = A/(A+B)
+recall = A/(A+C)
+f1 = (2*precision*recall)/(precision+recall)
+
+
+#print results
+#microaverage
+print("-Microaverage-")
+print("Overall accuracy: ",microOverallAcc)
+print("Precision: ",microPrecision)
+print("Recall: ",microRecall)
+print("F1: ",microF1)
+
+#macroaverage
+print("-Macroaverage-")
+print("Overall accuracy: ",overallAccuracy)
+print("Precision: ",precision)
+print("Recall: ",recall)
+print("F1: ",f1)
+
+f = open('outputTesting.txt','w+')
+#print out number of categories
+for k in range(len(testFilesList)):
+    # write out list of all words and idf score
+    f.write(testFilesList[k].file+ " "+ testFilesList[k].predicted+ " "+ testFilesList[k].cat+"\n")
+    #write out number of words in each category - read into testing.py
+f.close()
+
+end = datetime.now()
+print("\nRuntime: ",end-start)
