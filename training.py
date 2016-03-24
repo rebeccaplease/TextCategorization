@@ -6,9 +6,6 @@ from nltk import pos_tag
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import wordnet
 
-from nltk.tag.perceptron import PerceptronTagger
-tagger = PerceptronTagger()
-
 import os
 
 from datetime import datetime
@@ -16,6 +13,18 @@ from datetime import datetime
 from numpy import zeros
 
 from math import log10, sqrt
+
+from nltk.tag.perceptron import PerceptronTagger
+#globals#
+tagger = PerceptronTagger()
+wnl = WordNetLemmatizer()
+punct = ['/','.',',','!','?','-',';',':']
+#punct = ['/','.',',','!','?','-',';',':','+','@','#']
+punct = set(punct)
+
+stopWords = ['a','the','an','']
+stopWords = set(stopWords)
+NORM = 0.07
 
 class Document:
     def __init__(self, filepath, category):
@@ -46,7 +55,7 @@ def openFile(prompt):
             #filepath = os.path.join(os.path.dirname(__file__), filename)
             #print(os.path.curdir)
             filepath = os.path.relpath(filename)
-            print(filepath)
+            #print(filepath)
             f = open(filepath) # read in training
             valid = True
         except IOError:
@@ -79,7 +88,7 @@ def get_wordnet_pos(treebank_tag):
     else:
         return ''
 # Update TF for this doc and allWords
-def calculateTF(doc, allWords, training, wnl):
+def calculateTF(doc, allWords, training):
     #print(doc.file)
     filename = os.path.relpath(doc.file) #get relative path of the document
     #filename = os.path.join("TC_provided", relativePath)
@@ -111,43 +120,45 @@ def calculateTF(doc, allWords, training, wnl):
             #check for punctuations, contractions
             #combine = '/'.join(w)
             #print(combine)
-            
 
+            if w not in punct:
                 if training:
                     if doc.addTF(w):
                         if w in allWords:
                             allWords[w] += 1
                         else:
                             allWords[w] = 1
-                        numWordsInDoc += 1
                 else:
                     doc.addTF(w)
+                numWordsInDoc += 1
         #print("add to allwords ", datetime.now()-q)
     f.close()
 
     doc.wordCount = numWordsInDoc
 
 # Returns matrix of documents and TF*IDF weight
-def getTFIDF(files, allWords, N, categories, wnl):
+def getTFIDF(files, allWords, N, categories):
     catDoc = list() #empty list
     for c in range(len(categories)): #fill array with lists to hold docs
         catDoc.append(list()) #list of lists
 
     for doc in files:
-        calculateTF(doc, allWords, True, wnl)
+        calculateTF(doc, allWords, True)
         catDoc[categories.index(doc.cat)].append(doc) #add document to correct category with its term weights
 
-    # calculate idf score - loop through allWords and d
-    idf = dict()
-    for word, count in allWords.items():
-        idf[word] = log10(N/count)
+    #idf = dict()
+    #for word, count in allWords.items():
+        #idf[word] = log10(N/count)
+    # calculate idf score
+    for word in allWords:
+        allWords[word] = log10(N/allWords[word])
+    #print(allWords)
 
     weights = list() # hold centroid of each category
-    for c in range(len(categories)): #fill array with lists to hold docs
-        weights.append(dict()) # dictionary maps word: weight
 
     # calculate tf*idf for each category, keep running avg for each
     for k in range(len(categories)): # loop through catDoc
+        weights.append(dict()) # dictionary maps word: weight
         docs = catDoc[k]
         docCount = len(docs)
         #print(k)
@@ -156,7 +167,7 @@ def getTFIDF(files, allWords, N, categories, wnl):
             docNorm = 0
             docVector = dict()
             for word, tfcount in d.tf.items(): # iterate through words in document
-                idfWord = idf.get(word) # get idf for this word
+                idfWord = allWords.get(word) # get idf for this word
 
                 calcWeight = ((tfcount/d.wordCount)*idfWord)/docCount
                 if word in docVector:
@@ -175,6 +186,7 @@ def getTFIDF(files, allWords, N, categories, wnl):
                     weights[k][word] += normalizedDocWeight
                 else:
                     weights[k][word] = normalizedDocWeight
+    print(weights)
     return weights
 
 def outputTrainingFile(categories, weights):
@@ -192,17 +204,11 @@ def readTestFiles(testFiles, categories, weights, allWords):
         testFiles.append(Document(line.split()[0], ""))
     f.close()
 
-# compare to trained category weights
-
-#iterate through words in test document,
-#compute similarity -
-#if centroid category is already normalized, no need to normalize the test document
-#because the length will be the same anyways
-def assignCat(testFiles, categories, weights, allWords, wnl):
+#calculate similarity and assign best
+def assignCat(testFiles, categories, weights, allWords):
     for doc in testFiles:
-        calculateTF(doc, allWords, False, wnl)
+        calculateTF(doc, allWords, False)
 
-    #calculate similarity and assign best
     for doc in testFiles:
         maxSim = 0
         catIndex = -1
@@ -210,7 +216,11 @@ def assignCat(testFiles, categories, weights, allWords, wnl):
             sim = 0
             #iterate through each word in test doc
             for word, count in doc.tf.items():
-                sim += weights[k].get(word,0)*allWords.get(word, 0)*count
+                #score = weights[k].get(word,-1)*(count/doc.wordCount)*allWords.get(word, 1)
+                #if score < 0:
+                    #sim += NORM
+                #else:
+                sim += weights[k].get(word,0)*(count/doc.wordCount)*allWords.get(word, 0)
             if sim > maxSim: #store max similarity of all categories and index
                 maxSim = sim
                 catIndex = k
@@ -233,10 +243,9 @@ def main():
 
     numDocs = readTrainingFile(trainingFiles, categories)
     categories = list(categories) #convert set to list
-    wnl = WordNetLemmatizer()
 
     allWords = dict() # hold all words for idf calculation - inverted index
-    TFIDFweights = getTFIDF(trainingFiles, allWords, numDocs, categories, wnl)
+    TFIDFweights = getTFIDF(trainingFiles, allWords, numDocs, categories)
     #outputTrainingFile(categories, TFIDFweights)
 
     end = datetime.now()
@@ -248,7 +257,7 @@ def main():
     testFiles = list() # create an empty list for holding test files
 
     readTestFiles(testFiles, categories, TFIDFweights, allWords)
-    assignCat(testFiles, categories, TFIDFweights, allWords, wnl)
+    assignCat(testFiles, categories, TFIDFweights, allWords)
 
     end = datetime.now()
     print("\nRuntime: ",end-start)
