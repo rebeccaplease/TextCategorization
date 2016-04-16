@@ -1,3 +1,6 @@
+# Rebecca Poch
+# 3.24.16
+# Text Categorization using Rocchio TF*IDF
 from __future__ import print_function, division
 
 import nltk
@@ -5,17 +8,14 @@ from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import wordnet
 
-import re
-
 import os
 
 from datetime import datetime
 
-
 from math import log10, sqrt
 
 from nltk.tag.perceptron import PerceptronTagger
-#globals#
+# Load first to speed up nltk method runtime
 tagger = PerceptronTagger()
 wnl = WordNetLemmatizer()
 punct = ['/','.',',','!','?','-',';',':']
@@ -23,12 +23,7 @@ punct = set(punct)
 
 #stopWords = ['a','the','an', "n't", 'not', "'s",'is', 'which','on']
 #stopWords = set(stopWords)
-#regular expressions
-#date to date represntaton
-#numbers to number represenation
-#lowercase?
-#contractions
-#possessive  -ignore 's is
+
 NORM = 1
 
 class Document:
@@ -94,11 +89,6 @@ def calculateTF(doc, allWords, training):
     f = open(filename)
     numWordsInDoc = 0
     for line in f:
-        #line = line.lower()
-        #line = re.sub('(Jan|January|Feb|February|March|Mar|April|Apr|May|Jun|June\
-        #    July|Jul|August|Aug|September|Sept|October|Oct|November|Nov|December|\
-        #    Dec)
-        #    ,'dddd',line)
         words = word_tokenize(line)
         tagset = None
         words = nltk.tag._pos_tag(words, tagset, tagger) #[('And', 'CC'), ...]
@@ -169,17 +159,18 @@ def readTestFiles(testFiles, categories, weights, allWords):
         testFiles.append(Document(line.split()[0], ""))
     f.close()
 
-#calculate similarity and assign best
+# Calculate similarity and assign best
 def assignCat(testFiles, categories, weights, allWords):
+    numWords = len(weights)
     for doc in testFiles:
         calculateTF(doc, allWords, False)
         maxSim = 0
         catIndex = -1
-        for k in range(len(weights)): # iterate through each category
+        for k in range(numWords):
             sim = 0
             for word, count in doc.tf.items():
                 sim += (NORM+weights[k].get(word,0))*(count/doc.wordCount)*(NORM+allWords.get(word, 0))
-            if sim > maxSim: #store max similarity of all categories and index
+            if sim > maxSim:
                 maxSim = sim
                 catIndex = k
         doc.predicted = categories[catIndex] #assign category to current document
