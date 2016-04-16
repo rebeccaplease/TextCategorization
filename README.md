@@ -1,5 +1,11 @@
 # TextCategorization
 
+ECE 467 Natural Language Processing
+ 
+Spring 2015 
+
+http://faculty.cooper.edu/sable2/courses/spring2016/ece467/
+
 The training and testing program is located in one file: rocchio.py and it can be run using 
 ```
 python roccio.py 
